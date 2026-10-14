@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>my flappy game</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{background:lightblue;color:black;font-family:Arial,sans-serif;text-align:center;margin:0;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+p{margin:4px 0;font-size:15px}
+canvas{border:3px solid black;background:skyblue;width:auto;height:auto;max-width:calc(100% - 6px);max-height:calc(100vh - 110px);max-height:calc(100dvh - 110px);touch-action:none}
+#scare{position:fixed;left:0;top:0;width:100%;height:100%;background:black;display:none;z-index:9}
+#scare video,#scare canvas{width:100%;height:100%;object-fit:cover;border:0;max-height:none}
+</style></head>
+<body>
+<p>Score: <span id="sc">0</span> | Best: <span id="bs">0</span></p>
+<canvas id="c" width="360" height="520"></canvas>
+<p>tap tap para mag tumbo gar</p>
+<div id="scare"><video id="vid" playsinline></video><canvas id="fx" width="420" height="560" hidden></canvas></div>
+<script>
+
+const BIRD_SRC='https://www.image2url.com/r2/default/images/1791985008227-9b8958ab-25d2-41a1-bf2e-582985417387.png';   // example: 'bird.png'
+const VIDEO_SRC='https://videotourl.com/videos/1791986123896-e9f501d4-8256-4202-b477-8dbc6eafbeb3.mp4';  // example: 'scare.mp4'
+
+
+const c=document.getElementById('c'),x=c.getContext('2d'),sc=document.getElementById('sc'),bs=document.getElementById('bs');
+const scare=document.getElementById('scare'),vid=document.getElementById('vid'),fx=document.getElementById('fx');
+const W=c.width,H=c.height,GAP=150,PW=60,GROUND=40;
+const GRAVITY=0.25,JUMP=-5.2,STEP=1000/60; // same speed on every screen
+let bird,pipes,score,best=0,state='ready',t=0,videoURL=null,ac=null,last=0,acc=0,birdImg=null,birdURL=null;
+
+if(VIDEO_SRC){videoURL=VIDEO_SRC;vid.src=VIDEO_SRC;vid.load()}
+if(BIRD_SRC){const im=new Image();im.onload=()=>{birdImg=im;if(state!=='play')draw()};im.src=BIRD_SRC}
+
+function reset(){bird={x:80,y:H/2,v:0,r:15};pipes=[];score=0;t=0;sc.textContent=0}
+function flap(){
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)()}catch(e){}
+  if(scare.style.display==='block'){if(!videoURL||vid.paused||vid.ended){scare.style.display='none';vid.pause()}return}
+  if(state==='ready'){reset();state='play';last=performance.now();acc=0;requestAnimationFrame(loop)}
+  else if(state==='dead'){reset();state='ready'}
+  if(state==='play')bird.v=JUMP;
+}
+c.addEventListener('pointerdown',e=>{e.preventDefault();flap()});
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();flap()}});
+reset();draw();
+
+function update(){
+  t++;bird.v+=GRAVITY;bird.y+=bird.v;
+  if(t%100===1)pipes.push({x:W,gy:70+Math.random()*(H-GROUND-GAP-140)});
+  for(const p of pipes){
+    p.x-=2;
+    if(!p.passed&&p.x+PW<bird.x){p.passed=true;score++;sc.textContent=score}
+    if(bird.x+bird.r>p.x&&bird.x-bird.r<p.x+PW&&(bird.y-bird.r<p.gy||bird.y+bird.r>p.gy+GAP))return true;
+  }
+  pipes=pipes.filter(p=>p.x>-PW);
+  return bird.y+bird.r>H-GROUND||bird.y-bird.r<0;
+}
+function loop(now){
+  if(state!=='play')return;
+  acc+=Math.min(now-last,100);last=now;
+  while(acc>=STEP){acc-=STEP;if(update())return lose()}
+  draw();requestAnimationFrame(loop);
+}
+function draw(){
+  x.fillStyle='skyblue';x.fillRect(0,0,W,H);
+  x.fillStyle='green';
+  for(const p of pipes){x.fillRect(p.x,0,PW,p.gy);x.fillRect(p.x,p.gy+GAP,PW,H)}
+  x.fillStyle='brown';x.fillRect(0,H-GROUND,W,GROUND);
+  if(birdImg){
+    const s=40/Math.max(birdImg.width,birdImg.height),w=birdImg.width*s,h=birdImg.height*s;
+    x.drawImage(birdImg,bird.x-w/2,bird.y-h/2,w,h);
+  }else{
+    x.fillStyle='yellow';x.fillRect(bird.x-bird.r,bird.y-bird.r,bird.r*2,bird.r*2);
+    x.strokeStyle='black';x.strokeRect(bird.x-bird.r,bird.y-bird.r,bird.r*2,bird.r*2);
+    x.fillStyle='black';x.fillRect(bird.x+4,bird.y-7,5,5);
+    x.fillStyle='red';x.fillRect(bird.x+10,bird.y+2,10,5);
+  }
+  x.fillStyle='white';x.font='30px Arial';x.textAlign='center';x.fillText(score,W/2,50);
+  if(state==='ready')x.fillText('tap to start',W/2,H/2+60);
+}
+function lose(){
+  state='dead';best=Math.max(best,score);bs.textContent=best;draw();
+  scare.style.display='block';
+  if(videoURL){fx.hidden=true;vid.hidden=false;vid.currentTime=0;vid.muted=false;vid.volume=1;vid.play().catch(()=>{vid.muted=true;vid.play()})}
+  else builtIn();
+}
+vid.onended=()=>{scare.style.display='none'};
+scare.onclick=()=>{if(!videoURL||vid.paused||vid.ended){scare.style.display='none';vid.pause()}};
+
+function builtIn(){
+  vid.hidden=true;fx.hidden=false;const g=fx.getContext('2d');let n=0;
+  if(ac){const len=ac.sampleRate*1.2,buf=ac.createBuffer(1,len,ac.sampleRate),d=buf.getChannelData(0);
+    for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+    const s=ac.createBufferSource();s.buffer=buf;s.connect(ac.destination);s.start();
+    const o=ac.createOscillator();o.type='sawtooth';o.frequency.setValueAtTime(900,ac.currentTime);o.frequency.exponentialRampToValueAtTime(90,ac.currentTime+1);o.connect(ac.destination);o.start();o.stop(ac.currentTime+1)}
+  (function f(){
+    if(scare.style.display==='none')return;
+    const j=()=>(Math.random()-.5)*14;
+    g.fillStyle=n%4<2?'#000':'#2a0000';g.fillRect(0,0,420,560);
+    g.save();g.translate(210+j(),280+j());g.scale(1+n*.01,1+n*.01);
+    g.fillStyle='#d9d4c0';g.beginPath();g.ellipse(0,0,120,170,0,0,7);g.fill();
+    g.fillStyle='#000';g.beginPath();g.ellipse(-48,-40,28,40,0,0,7);g.ellipse(48,-40,28,40,0,0,7);g.fill();
+    g.fillStyle='#fff';g.fillRect(-52+j()/4,-34,8,8);g.fillRect(44+j()/4,-34,8,8);
+    g.fillStyle='#000';g.beginPath();g.ellipse(0,85,55,70,0,0,7);g.fill();
+    g.restore();
+    if(++n<110)requestAnimationFrame(f);else scare.style.display='none';
+  })();
+}
+</script>
+</body></html>
